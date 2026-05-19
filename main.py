@@ -35,6 +35,7 @@ Você é um especialista em oratória.
 Analise o vídeo enviado considerando linguagem corporal, dicção e conteúdo.
 Retorne exclusivamente JSON válido de acordo com o schema fornecido.
 """
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 
 
 @app.post("/analisar-video/", response_model=AnaliseDiscurso)
@@ -53,7 +54,9 @@ async def analisar_video(file: UploadFile = File(...)) -> AnaliseDiscurso:
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=extensao) as temp_file:
             temp_path = temp_file.name
-            conteudo = await file.read()
+            conteudo = await file.read(MAX_UPLOAD_BYTES + 1)
+            if len(conteudo) > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Arquivo excede o tamanho máximo permitido (500MB).")
             temp_file.write(conteudo)
 
         try:
