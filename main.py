@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 import tempfile
 from typing import Optional
 
@@ -13,7 +13,6 @@ from google.genai import types
 app = FastAPI(title="SpeechAnalyzer")
 logger = logging.getLogger(__name__)
 
-# Inicialização da SDK moderna do Gemini
 API_KEY = os.environ.get("GEMINI_API_KEY")
 if not API_KEY:
     raise RuntimeError("GEMINI_API_KEY não configurada.")
@@ -36,14 +35,27 @@ Analise o vídeo enviado considerando linguagem corporal, dicção e conteúdo.
 Retorne exclusivamente JSON válido de acordo com o schema fornecido.
 """
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+MODOS_VALIDOS = {"rapido", "profundo"}
+CONFIG_POR_MODO = {
+    "rapido": {
+        "model": "gemini-3-flash-preview",
+        "thinking_config": types.ThinkingConfig(thinking_level="low"),
+    },
+    "profundo": {
+        "model": "gemini-3.1-pro-preview",
+        "thinking_config": types.ThinkingConfig(thinking_level="high"),
+    },
+}
 
 
 @app.post("/analisar-video/", response_model=AnaliseDiscurso)
-async def analisar_video(file: UploadFile = File(...)) -> AnaliseDiscurso:
+async def analisar_video(file: UploadFile = File(...), modo: str = "profundo") -> AnaliseDiscurso:
+    if modo not in MODOS_VALIDOS:
+        raise HTTPException(status_code=400, detail="Parâmetro 'modo' inválido. Use 'rapido' ou 'profundo'.")
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="Arquivo inválido.")
 
-    # Etapa 1 suporta somente os formatos mais comuns para upload inicial.
     extensao = os.path.splitext(file.filename)[1].lower()
     if extensao not in {".mp4", ".mov"}:
         raise HTTPException(status_code=400, detail="Envie um arquivo .mp4 ou .mov.")
@@ -65,11 +77,14 @@ async def analisar_video(file: UploadFile = File(...)) -> AnaliseDiscurso:
             logger.exception("Erro no upload para Gemini")
             raise HTTPException(status_code=502, detail="Erro no upload para o Gemini.")
 
+        config_modo = CONFIG_POR_MODO[modo]
+
         try:
             resposta = client.models.generate_content(
-                model="gemini-1.5-pro",
+                model=config_modo["model"],
                 contents=[arquivo_gemini, PROMPT_ANALISE],
                 config=types.GenerateContentConfig(
+                    thinking_config=config_modo["thinking_config"],
                     response_mime_type="application/json",
                     response_schema=AnaliseDiscurso,
                 ),
