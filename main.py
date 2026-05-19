@@ -14,7 +14,10 @@ app = FastAPI(title="SpeechAnalyzer")
 logger = logging.getLogger(__name__)
 
 # Inicialização da SDK moderna do Gemini
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+API_KEY = os.environ.get("GEMINI_API_KEY")
+if not API_KEY:
+    raise RuntimeError("GEMINI_API_KEY não configurada.")
+client = genai.Client(api_key=API_KEY)
 
 
 class AnaliseDiscurso(BaseModel):
@@ -36,12 +39,10 @@ Retorne exclusivamente JSON válido de acordo com o schema fornecido.
 
 @app.post("/analisar-video/", response_model=AnaliseDiscurso)
 async def analisar_video(file: UploadFile = File(...)) -> AnaliseDiscurso:
-    if not os.environ.get("GEMINI_API_KEY"):
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
-
     if not file.filename:
         raise HTTPException(status_code=400, detail="Arquivo inválido.")
 
+    # Etapa 1 suporta somente os formatos mais comuns para upload inicial.
     extensao = os.path.splitext(file.filename)[1].lower()
     if extensao not in {".mp4", ".mov"}:
         raise HTTPException(status_code=400, detail="Envie um arquivo .mp4 ou .mov.")
@@ -88,10 +89,10 @@ async def analisar_video(file: UploadFile = File(...)) -> AnaliseDiscurso:
             try:
                 os.remove(temp_path)
             except OSError:
-                pass
+                logger.warning("Falha ao remover arquivo temporário local.", exc_info=True)
 
         if arquivo_gemini is not None:
             try:
                 client.files.delete(name=arquivo_gemini.name)
             except Exception:
-                pass
+                logger.warning("Falha ao remover arquivo temporário no Gemini.", exc_info=True)
